@@ -16,6 +16,12 @@ fn read_markdown(path: String) -> Result<String, String> {
     Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_string())
 }
 
+/// 편집한 내용을 저장한다.
+#[tauri::command]
+fn write_markdown(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
 /// 파일을 더블클릭해서 실행했을 때 넘어온 경로
 #[tauri::command]
 fn initial_file() -> Option<String> {
@@ -37,13 +43,14 @@ fn watch_file(app: AppHandle, state: State<WatchState>, path: String) -> Result<
 
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
         let Ok(event) = res else { return };
-        if !matches!(
-            event.kind,
-            EventKind::Modify(_) | EventKind::Create(_)
-        ) {
+        if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
             return;
         }
-        if event.paths.iter().any(|p| p.file_name().map(|n| n.to_os_string()) == name) {
+        if event
+            .paths
+            .iter()
+            .any(|p| p.file_name().map(|n| n.to_os_string()) == name)
+        {
             let _ = app.emit("file-changed", &path);
         }
     })
@@ -58,6 +65,12 @@ fn watch_file(app: AppHandle, state: State<WatchState>, path: String) -> Result<
     Ok(())
 }
 
+/// 새 문서를 시작할 때 이전 파일 감시를 멈춘다.
+#[tauri::command]
+fn unwatch_file(state: State<WatchState>) {
+    *state.0.lock().unwrap() = None;
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -67,7 +80,13 @@ pub fn run() {
             app.manage(WatchState::default());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![read_markdown, initial_file, watch_file])
+        .invoke_handler(tauri::generate_handler![
+            read_markdown,
+            write_markdown,
+            initial_file,
+            watch_file,
+            unwatch_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running MD Viewer");
 }
