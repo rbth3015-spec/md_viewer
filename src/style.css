@@ -124,12 +124,13 @@ button { font: inherit; color: inherit; }
    ────────────────────────────────────────────── */
 .app {
   display: grid;
-  grid-template-columns: var(--toc-w) 1fr;
-  grid-template-rows: var(--topbar-h) 1fr;
+  /* 목차 | 편집기 | 본문 */
+  grid-template-columns: var(--toc-w) 0fr 1fr;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   height: 100vh;
   transition: grid-template-columns 0.35s var(--ease);
 }
-.app.toc-hidden { grid-template-columns: 0 1fr; }
+.app.toc-hidden { grid-template-columns: 0 0fr 1fr; }
 
 .topbar {
   grid-column: 1 / -1;
@@ -203,6 +204,8 @@ button { font: inherit; color: inherit; }
    목차
    ────────────────────────────────────────────── */
 .toc {
+  grid-column: 1;
+  grid-row: 2;
   overflow: hidden auto;
   border-right: 1px solid var(--rule);
   background: var(--bg-elev);
@@ -248,6 +251,9 @@ button { font: inherit; color: inherit; }
    본문
    ────────────────────────────────────────────── */
 .reader {
+  grid-column: 3;
+  grid-row: 2;
+  min-width: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
   scroll-padding-top: 32px;
@@ -578,10 +584,49 @@ button { font: inherit; color: inherit; }
 }
 .toast.show { opacity: 0.92; transform: translate(-50%, 0); }
 
+/* ──────────────────────────────────────────────
+   편집 — 왼쪽 원문, 오른쪽 미리보기
+   ────────────────────────────────────────────── */
+.editor {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
+  display: none;
+  border-right: 1px solid var(--rule);
+  background: var(--bg-elev);
+}
+.app.editing { grid-template-columns: 0 1fr 1fr; }
+.app.editing .editor { display: block; }
+.app.editing .toc { visibility: hidden; }
+.app.editing #btn-toc { visibility: hidden; }
+.app.editing .doc { padding: 48px 36px 40vh; font-size: calc(var(--fs) * 0.94); animation: none; }
+.app.editing #btn-edit { color: var(--accent); background: var(--accent-soft); }
+
+/* 저장하지 않은 변경 표시 */
+.doc-name.dirty::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+
+.welcome-actions { display: flex; gap: 10px; }
+.welcome .open-btn.ghost { border-color: transparent; color: var(--muted); }
+.welcome .open-btn.ghost:hover { color: var(--text); border-color: var(--rule); background: transparent; }
+
 /* 좁은 창에서는 목차를 접는다 */
 @media (max-width: 860px) {
-  .app { grid-template-columns: 0 1fr; }
-  .app.toc-open { grid-template-columns: var(--toc-w) 1fr; }
+  .app { grid-template-columns: 0 0fr 1fr; }
+  .app.toc-open { grid-template-columns: var(--toc-w) 0fr 1fr; }
+  /* 좁으면 편집 중엔 원문만 */
+  .app.editing, .app.editing.toc-open { grid-template-columns: 0 1fr 0fr; }
+  .app.editing .reader { visibility: hidden; }
   .app:not(.toc-open) .toc { visibility: hidden; }
   .doc { padding: 48px 24px 120px; }
 }
@@ -594,6 +639,6 @@ button { font: inherit; color: inherit; }
 }
 
 /* 첫 화면에서는 목차 자리를 비운다 */
-.app.welcome-mode { grid-template-columns: 0 1fr; }
+.app.welcome-mode { grid-template-columns: 0 0fr 1fr; }
 .app.welcome-mode .toc { visibility: hidden; }
 .app.welcome-mode #btn-toc { visibility: hidden; }

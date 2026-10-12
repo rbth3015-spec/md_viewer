@@ -6,7 +6,10 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-title",
+    "core:window:allow-destroy",
     "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-ask",
     "opener:allow-open-url",
     {
       "identifier": "opener:allow-open-path",

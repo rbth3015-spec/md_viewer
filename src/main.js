@@ -24,7 +24,10 @@ const docName = $("doc-name");
 const progress = $("progress");
 
 const MD_EXT = /\.(md|markdown|mdown|mkd|mdx|txt)$/i;
-const state = { path: null, headings: [] };
+// saved: 디스크에 있는 내용, text: 지금 화면의 내용(편집 중이면 다를 수 있음)
+const state = { path: null, headings: [], saved: "", text: "", editing: false };
+const isDirty = () => state.text !== state.saved;
+let editor = null;
 
 /* ── 저장되는 설정 ─────────────────────────── */
 const store = {
@@ -113,15 +116,21 @@ function render(source, path, { keepScroll = false } = {}) {
 
   state.path = path;
   state.headings = headings;
-  const name = path ? basename(path) : "";
-  docName.textContent = name;
-  document.title = name ? `${name} — MD Viewer` : "MD Viewer";
-  if (isTauri) tauri.window.getCurrentWindow().setTitle(document.title).catch(() => {});
+  updateTitle();
 
   reader.style.scrollBehavior = "auto";
   reader.scrollTop = keepScroll ? ratio * (reader.scrollHeight - reader.clientHeight) : 0;
   reader.style.scrollBehavior = "";
   onScroll();
+}
+
+function updateTitle() {
+  const name = state.path ? basename(state.path) : state.editing || state.text ? "제목 없음" : "";
+  const dirty = isDirty();
+  docName.textContent = name;
+  docName.classList.toggle("dirty", dirty);
+  document.title = name ? `${dirty ? "● " : ""}${name} — MD Viewer` : "MD Viewer";
+  if (isTauri) tauri.window.getCurrentWindow().setTitle(document.title).catch(() => {});
 }
 
 function fixImages(path) {
@@ -182,12 +191,28 @@ function onScroll() {
 }
 reader.addEventListener("scroll", onScroll, { passive: true });
 
+/* ── 확인 창 ───────────────────────────────── */
+async function confirmDiscard() {
+  if (!isDirty()) return true;
+  const msg = "저장하지 않은 변경 내용이 있습니다. 버리고 계속할까요?";
+  if (!isTauri) return window.confirm(msg);
+  return tauri.dialog.ask(msg, { title: "MD Viewer", kind: "warning", okLabel: "버리기", cancelLabel: "취소" });
+}
+
 /* ── 파일 열기 ─────────────────────────────── */
-async function openPath(path, opts) {
+function loadText(text, path, opts) {
+  state.saved = text;
+  state.text = text;
+  if (editor) editor.setText(text);
+  render(text, path, opts);
+}
+
+async function openPath(path, opts = {}) {
+  if (!opts.keepScroll && !(await confirmDiscard())) return;
   try {
     const text = await tauri.core.invoke("read_markdown", { path });
-    render(text, path, opts);
-    if (!opts?.keepScroll) {
+    loadText(text, path, opts);
+    if (!opts.keepScroll) {
       store.set("lastDir", dirname(path));
       tauri.core.invoke("watch_file", { path }).catch(() => {});
     }
@@ -207,10 +232,82 @@ async function openDialog() {
   if (picked) openPath(picked);
 }
 
+/* ── 편집 ─────────────────────────────────── */
+let liveTimer;
+async function setEditing(on) {
+  if (on && !editor) {
+    const { createEditor } = await import("./editor.js");
+    editor = createEditor($("editor"), {
+      text: state.text,
+      onChange(text) {
+        state.text = text;
+        updateTitle();
+        clearTimeout(liveTimer);
+        liveTimer = setTimeout(() => render(text, state.path, { keepScroll: true }), 120);
+      },
+      onScroll: syncPreview,
+    });
+  }
+  state.editing = on;
+  app.classList.toggle("editing", on);
+  if (on) {
+    app.classList.remove("welcome-mode");
+    if (doc.querySelector(".welcome")) render(state.text, state.path);
+    editor.focus();
+  }
+  updateTitle();
+}
+
+// 원문을 스크롤하면 미리보기도 같은 비율만큼 따라온다
+function syncPreview(scroller) {
+  const ratio = scroller.scrollTop / Math.max(1, scroller.scrollHeight - scroller.clientHeight);
+  reader.style.scrollBehavior = "auto";
+  reader.scrollTop = ratio * (reader.scrollHeight - reader.clientHeight);
+  reader.style.scrollBehavior = "";
+}
+
+async function newDocument() {
+  if (!(await confirmDiscard())) return;
+  if (isTauri) tauri.core.invoke("unwatch_file").catch(() => {});
+  loadText("", null);
+  await setEditing(true);
+}
+
+async function save({ as = false } = {}) {
+  if (!isTauri) return toast("브라우저 미리보기에서는 저장할 수 없습니다");
+  if (!state.path && !isDirty() && !state.editing) return;
+  let path = state.path;
+  if (as || !path) {
+    const dir = store.get("lastDir", "");
+    path = await tauri.dialog.save({
+      defaultPath: path ?? (dir ? `${dir}${sepOf(dir)}제목 없음.md` : "제목 없음.md"),
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (!path) return false;
+  }
+  const content = state.text;
+  try {
+    await tauri.core.invoke("write_markdown", { path, content });
+  } catch (e) {
+    toast(`저장하지 못했습니다: ${e}`);
+    return false;
+  }
+  state.saved = content;
+  if (path !== state.path) {
+    state.path = path;
+    store.set("lastDir", dirname(path));
+    tauri.core.invoke("watch_file", { path }).catch(() => {});
+    render(content, path, { keepScroll: true });
+  }
+  updateTitle();
+  toast("저장했습니다");
+  return true;
+}
+
 // 브라우저에서 미리보기할 때(개발용)
 function browserPick() {
   const input = Object.assign(document.createElement("input"), { type: "file", accept: ".md,.markdown,.txt" });
-  input.onchange = async () => input.files[0] && render(await input.files[0].text(), input.files[0].name);
+  input.onchange = async () => input.files[0] && loadText(await input.files[0].text(), input.files[0].name);
   input.click();
 }
 
@@ -250,6 +347,9 @@ window.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey)) return;
   const k = e.key.toLowerCase();
   const actions = {
+    s: () => save({ as: e.shiftKey }),
+    e: () => (!state.path && !state.text && !state.editing ? newDocument() : setEditing(!state.editing)),
+    n: newDocument,
     o: openDialog,
     d: cycleTheme,
     "\\": toggleToc,
@@ -257,17 +357,23 @@ window.addEventListener("keydown", (e) => {
     "+": () => setFontSize(fontSize + 1),
     "-": () => setFontSize(fontSize - 1),
     0: () => setFontSize(17),
-    r: () => state.path && isTauri && openPath(state.path, { keepScroll: true }),
+    r: () => {
+      if (!state.path || !isTauri) return;
+      if (isDirty()) return toast("저장하지 않은 변경 내용이 있어 다시 읽지 않았습니다");
+      openPath(state.path, { keepScroll: true });
+    },
   };
   if (actions[k]) {
     e.preventDefault();
+    e.stopPropagation();
     actions[k]();
   }
-});
+}, true); // 편집기보다 먼저 받아서 앱 단축키가 우선하도록
 
 $("btn-open").addEventListener("click", openDialog);
 $("btn-theme").addEventListener("click", cycleTheme);
 $("btn-toc").addEventListener("click", toggleToc);
+$("btn-edit").addEventListener("click", () => setEditing(!state.editing));
 
 /* ── 드래그 앤 드롭 ───────────────────────── */
 const overlay = $("drop-overlay");
@@ -291,7 +397,7 @@ if (isTauri) {
     e.preventDefault();
     overlay.classList.remove("show");
     const f = e.dataTransfer.files[0];
-    if (f) render(await f.text(), f.name);
+    if (f && (await confirmDiscard())) loadText(await f.text(), f.name);
   });
 }
 
@@ -301,29 +407,50 @@ if (isTauri) {
   tauri.event.listen("file-changed", ({ payload }) => {
     if (payload !== state.path) return;
     clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(() => openPath(state.path, { keepScroll: true }), 120);
+    reloadTimer = setTimeout(async () => {
+      const text = await tauri.core.invoke("read_markdown", { path: state.path }).catch(() => null);
+      if (text === null || text === state.saved) return; // 내가 저장한 것이면 무시
+      if (isDirty()) {
+        toast("다른 곳에서 파일이 바뀌었습니다. 저장하면 덮어씁니다");
+        return;
+      }
+      loadText(text, state.path, { keepScroll: true });
+    }, 120);
+  });
+
+  // 저장하지 않고 창을 닫으려 하면 한 번 묻는다
+  tauri.window.getCurrentWindow().onCloseRequested(async (event) => {
+    if (!(await confirmDiscard())) event.preventDefault();
   });
 }
 
 /* ── 첫 화면 ──────────────────────────────── */
 function showWelcome() {
   state.path = null;
+  state.saved = state.text = "";
   app.classList.add("welcome-mode");
   doc.innerHTML = `
     <section class="welcome">
       <h1 class="mark">읽기 좋은<br>마크다운<span>.</span></h1>
       <p class="lead">문서를 이 창에 끌어다 놓거나, 파일을 직접 여세요.</p>
-      <button class="open-btn" id="welcome-open">파일 열기</button>
+      <div class="welcome-actions">
+        <button class="open-btn" id="welcome-open">파일 열기</button>
+        <button class="open-btn ghost" id="welcome-new">새 문서</button>
+      </div>
       <div class="keys">
         <kbd>Ctrl O</kbd><span>파일 열기</span>
+        <kbd>Ctrl N</kbd><span>새 문서</span>
+        <kbd>Ctrl E</kbd><span>편집 · 읽기 전환</span>
+        <kbd>Ctrl S</kbd><span>저장</span>
         <kbd>Ctrl \\</kbd><span>목차 보이기 · 숨기기</span>
         <kbd>Ctrl D</kbd><span>테마 전환</span>
         <kbd>Ctrl + / -</kbd><span>글자 크기</span>
       </div>
     </section>`;
   $("welcome-open").addEventListener("click", openDialog);
+  $("welcome-new").addEventListener("click", newDocument);
   tocNav.innerHTML = "";
-  docName.textContent = "";
+  updateTitle();
 }
 
 /* ── 시작 ─────────────────────────────────── */
