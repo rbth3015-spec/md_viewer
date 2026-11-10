@@ -45,31 +45,32 @@ const theme = EditorView.theme({
   ".cm-searchMatch": { backgroundColor: "var(--mark)" },
 });
 
-/** 편집기를 만든다. onChange(text)는 내용이 바뀔 때마다 불린다. */
-export function createEditor(parent, { text, onChange, onScroll }) {
-  const view = new EditorView({
-    parent,
-    state: EditorState.create({
-      doc: text,
-      extensions: [
-        history(),
-        drawSelection(),
-        highlightSelectionMatches(),
-        EditorView.lineWrapping,
-        markdown(),
-        syntaxHighlighting(mdStyle),
-        placeholder("여기에 쓰기 시작하세요"),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-        theme,
-        EditorView.updateListener.of((u) => u.docChanged && onChange(u.state.doc.toString())),
-      ],
-    }),
-  });
+/**
+ * 편집기를 만든다. 탭마다 내용·커서·실행 취소 기록을 따로 갖도록
+ * 상태(EditorState)를 만들어 갈아 끼우는 방식으로 쓴다.
+ */
+export function createEditor(parent, { onChange, onScroll }) {
+  const extensions = [
+    history(),
+    drawSelection(),
+    highlightSelectionMatches(),
+    EditorView.lineWrapping,
+    markdown(),
+    syntaxHighlighting(mdStyle),
+    placeholder("여기에 쓰기 시작하세요"),
+    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+    theme,
+    EditorView.updateListener.of((u) => u.docChanged && onChange(u.state.doc.toString())),
+  ];
+  const newState = (text) => EditorState.create({ doc: text, extensions });
+  const view = new EditorView({ parent, state: newState("") });
   view.scrollDOM.addEventListener("scroll", () => onScroll(view.scrollDOM), { passive: true });
 
   return {
     view,
-    getText: () => view.state.doc.toString(),
+    newState,
+    // 다른 탭의 상태로 바꿔 끼운다 (변경 알림은 일어나지 않음)
+    swap: (state) => view.setState(state),
     // 바깥에서 내용을 바꿀 때(다시 읽기 등) 커서 위치는 최대한 유지
     setText(next) {
       const head = Math.min(view.state.selection.main.head, next.length);
@@ -79,5 +80,6 @@ export function createEditor(parent, { text, onChange, onScroll }) {
       });
     },
     focus: () => view.focus(),
+    hasFocus: () => view.hasFocus,
   };
 }
