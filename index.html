@@ -22,6 +22,9 @@
         </div>
         <div class="doc-name" id="doc-name"></div>
         <div class="topbar-side right">
+          <button class="icon-btn" id="btn-copy" title="문서 원문 복사" aria-label="문서 원문 복사">
+            <svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" /></svg>
+          </button>
           <button class="icon-btn" id="btn-edit" title="편집 (Ctrl+E)" aria-label="편집">
             <svg viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10a2.83 2.83 0 0 0-4-4l-10 10z" /><path d="M13.5 6.5l4 4" /></svg>
           </button>
@@ -37,9 +40,15 @@
         <div class="progress" id="progress"></div>
       </header>
 
+      <nav class="tabbar" id="tabbar"></nav>
+
       <aside class="toc" id="toc">
-        <div class="toc-label">목차</div>
-        <nav id="toc-nav"></nav>
+        <div class="side-tabs">
+          <button class="side-tab" data-mode="toc">목차</button>
+          <button class="side-tab" data-mode="files">파일</button>
+        </div>
+        <nav id="toc-nav" class="side-list"></nav>
+        <nav id="files-nav" class="side-list"></nav>
       </aside>
 
       <section class="editor" id="editor"></section>
@@ -47,6 +56,22 @@
       <main class="reader" id="reader">
         <article class="doc" id="doc"></article>
       </main>
+
+      <div class="findbar" id="findbar">
+        <input id="find-input" type="text" placeholder="문서에서 찾기" spellcheck="false" />
+        <span class="find-count" id="find-count"></span>
+        <button class="icon-btn small" id="find-prev" title="이전 (Shift+Enter)" aria-label="이전">
+          <svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5" /></svg>
+        </button>
+        <button class="icon-btn small" id="find-next" title="다음 (Enter)" aria-label="다음">
+          <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5" /></svg>
+        </button>
+        <button class="icon-btn small" id="find-close" title="닫기 (Esc)" aria-label="닫기">
+          <svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg>
+        </button>
+      </div>
+
+      <div class="lightbox" id="lightbox"><img alt="" /></div>
 
       <div class="drop-overlay" id="drop-overlay">
         <div class="drop-frame">놓으면 열립니다</div>
