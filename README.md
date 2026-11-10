@@ -44,8 +44,13 @@
 
 ## 설치 파일 받기
 
-GitHub의 **Actions → Windows 빌드** 에서 가장 최근 실행을 열고, 아래쪽 *Artifacts* 의
-`MD-Viewer-Windows` 를 내려받아 압축을 풀면 `MD Viewer_x.y.z_x64-setup.exe` 가 있습니다.
+**[최신 버전 바로 받기 (MD-Viewer-Setup.exe)](https://github.com/rbth3015-spec/md_viewer/releases/latest/download/MD-Viewer-Setup.exe)**
+
+받은 파일을 실행하면 설치되고, 이미 설치돼 있으면 덮어 설치됩니다.
+처음 실행할 때 "Windows의 PC 보호" 창이 뜨면 **추가 정보 → 실행**을 누르세요(서명되지 않은 개인 프로그램이라 뜨는 경고).
+
+지난 버전은 저장소의 [Releases](https://github.com/rbth3015-spec/md_viewer/releases) 페이지에 있습니다.
+`main`에 합쳐질 때마다 자동으로 빌드되어 올라가며, 버전 번호는 `package.json`의 `version`을 따릅니다.
 
 ## 직접 빌드하기
 
